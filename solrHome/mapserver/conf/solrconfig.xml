@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<config>
+
+  <luceneMatchVersion>5.5.0</luceneMatchVersion>
+
+  <directoryFactory name="DirectoryFactory"
+                    class="${solr.directoryFactory:solr.NRTCachingDirectoryFactory}">
+  </directoryFactory>
+
+  <schemaFactory class="ClassicIndexSchemaFactory" />
+
+  <jmx />
+
+  <query>
+
+    <maxBooleanClauses>1024</maxBooleanClauses>
+
+    <filterCache class="solr.FastLRUCache"
+                 size="512"
+                 initialSize="512"
+                 autowarmCount="0"/>
+
+    <queryResultCache class="solr.LRUCache"
+                      size="512"
+                      initialSize="512"
+                      autowarmCount="0"/>
+
+    <documentCache class="solr.LRUCache"
+                   size="512"
+                   initialSize="512"
+                   autowarmCount="0"/>
+
+    <queryResultWindowSize>20</queryResultWindowSize>
+
+    <queryResultMaxDocsCached>200</queryResultMaxDocsCached>
+
+  </query>
+
+  <requestDispatcher handleSelect="false" >
+
+    <requestParsers enableRemoteStreaming="true"
+                    multipartUploadLimitInKB="2048000"
+                    formdataUploadLimitInKB="2048"
+                    addHttpRequestToContext="false"/>
+
+    <httpCaching never304="true" />
+
+  </requestDispatcher>
+
+  <requestHandler name="/select" class="solr.SearchHandler">
+
+    <lst name="defaults">
+      <str name="echoParams">explicit</str>
+      <int name="rows">10</int>
+    </lst>
+
+  </requestHandler>
+
+  <requestHandler name="/analysis/field"
+                  startup="lazy"
+                  class="solr.FieldAnalysisRequestHandler" />
+
+  <requestHandler name="/analysis/document"
+                  class="solr.DocumentAnalysisRequestHandler"
+                  startup="lazy" />
+
+</config>
