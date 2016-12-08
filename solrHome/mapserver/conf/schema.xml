@@ -4,7 +4,22 @@
 
   <field name="id" type="string" indexed="true" stored="true" required="true" />
 
-  <field name="file" type="string" indexed="false" stored="true" />
+  <field name="tileMapResourcePath" type="string" indexed="false" stored="true" />
+
+  <!-- These spatial fields have coordinates in decimal degrees, WGS84 -->
+  <field name="bbox"        type="string" indexed="false" stored="true" />
+  <field name="bbox_bbox"   type="bbox"   indexed="true"  stored="false" />
+  <field name="bbox_rpt"    type="rpt"    indexed="true"  stored="false" />
+  <copyField source="bbox" dest="bbox_bbox" />
+  <copyField source="bbox" dest="bbox_rpt" />
+
+  <field name="point"       type="latLon" indexed="false" stored="true" />
+
+  <field name="area"        type="tdouble" indexed="true" docValues="true" stored="true" />
+
+  <field name="tileFormatExtension" type="string" indexed="false" docValues="false" stored="true" />
+
+  <field name="zoomLevels"  type="int"    indexed="true" docValues="true" stored="true" multiValued="true" />
 
 
   <!-- field types: -->
@@ -26,6 +41,24 @@
   <fieldType name="tdate" class="solr.TrieDateField" precisionStep="6" positionIncrementGap="0"/>
 
   <fieldType name="binary" class="solr.BinaryField"/>
+
+  <!-- Spatial rectangle (bounding box) field. It supports most spatial predicates, and has
+  special relevancy modes: score=overlapRatio|area|area2D (local-param to the query).  -->
+  <fieldType name="bbox" class="solr.BBoxField"
+             geo="true" distanceUnits="kilometers" numberType="_coord" />
+
+  <fieldType name="latLon" class="solr.LatLonType" subFieldSuffix="_coord"/>
+
+  <!-- used by BBoxField and LatLonType -->
+  <fieldType name="_coord" class="solr.TrieDoubleField" precisionStep="8"
+             docValues="true" useDocValuesAsStored="false" stored="false" />
+
+  <!-- Spatial RPT optimized for heatmaps, and we use it for filtering too.
+  For more heatmap resolution choices we use a quad tree.  To make the cells square, we use a
+  square worldBounds (although now we can't span the dateline since that necessitates geo=false). -->
+  <fieldType name="rpt" class="solr.SpatialRecursivePrefixTreeFieldType"
+             geo="false" worldBounds="ENVELOPE(-180, 180, 180, -180)" prefixTree="quad"
+             distErrPct="0.025" maxDistErr="0.00001" distanceUnits="kilometers" />
 
   <!-- misc: -->
 

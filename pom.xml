@@ -29,8 +29,8 @@
   </developers>
 
   <properties>
-    <kotlin.version>1.0.0</kotlin.version>
-    <solr.version>5.5.0</solr.version>
+    <kotlin.version>1.0.5</kotlin.version>
+    <solr.version>6.1.0</solr.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
@@ -104,6 +104,24 @@
             <goals>
               <goal>test-compile</goal>
             </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <groupId>org.apache.maven.plugins</groupId>
+        <version>2.10</version>
+        <executions>
+          <execution>
+            <id>copy-dependencies</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+             <includeScope>runtime</includeScope>
+            </configuration>
           </execution>
         </executions>
       </plugin>
