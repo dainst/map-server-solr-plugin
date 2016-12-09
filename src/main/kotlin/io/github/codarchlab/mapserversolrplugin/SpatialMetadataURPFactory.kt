@@ -26,8 +26,11 @@ import org.apache.solr.update.AddUpdateCommand
 import org.apache.solr.update.processor.UpdateRequestProcessor
 import org.apache.solr.update.processor.UpdateRequestProcessorFactory
 import org.w3c.dom.Element
+import java.net.URLDecoder
+import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.*
+import java.util.stream.Collectors
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlin.reflect.KProperty
 
@@ -39,11 +42,12 @@ class SpatialMetadataURPFactory : UpdateRequestProcessorFactory() {
   private val initArgs: NamedList<Any> = NamedList()
 
   private val defaultBasePath: String? by initArgs // optional
-  private val tilePathField: String by initArgs
+  private val tileMapResourcePathField: String by initArgs
   private val bboxField: String by initArgs
   private val pointField: String by initArgs
   private val areaField: String by initArgs
   private val zoomLevelsField: String by initArgs
+  private val imageZXYPathsField: String by initArgs
   private val tileFormatExtensionField: String by initArgs
 
   private val xmlDocBuilder = DocumentBuilderFactory.newInstance().newDocumentBuilder()!!
@@ -68,48 +72,47 @@ class SpatialMetadataURPFactory : UpdateRequestProcessorFactory() {
     } //?: throw SolrException(SolrException.ErrorCode.BAD_REQUEST, "basePath must be specified")
 
     override fun processAdd(cmd: AddUpdateCommand) {
-
       val solrDoc = cmd.solrDoc!!
-      val tilePathStr = solrDoc.getFieldValue(tilePathField) as String?
-      if (tilePathStr != null) {
+      val tileRsrcInput = solrDoc.getFieldValue(tileMapResourcePathField) as String?
+      if (tileRsrcInput != null) {
         // convert to a URL
         try {
-          val tilePathUrl = constructTilePathUrl(baseUrlPath, tilePathStr)
+          val tileRsrcUrl = constructTileRsrcUrl(baseUrlPath, tileRsrcInput)
 
-          enrichDocFromTileMap(solrDoc, tilePathUrl)
+          enrichDocFromTileMap(solrDoc, tileRsrcUrl)
         } catch(e: Exception) {
           throw SolrException(SolrException.ErrorCode.BAD_REQUEST,
-                  "While processing doc ${cmd.printableId} file path $tilePathStr: $e", e)
+                  "While processing doc ${cmd.printableId} file path $tileRsrcInput: $e", e)
         }
       }
 
       super.processAdd(cmd)
     }
 
-    private fun constructTilePathUrl(basePath: String?, tilePathStr: String): String {
-      var tilePathStr1 = tilePathStr
-      if (!isUrl(tilePathStr1)) {
-        if (tilePathStr1.startsWith('/')) {
-          tilePathStr1 = "file://$tilePathStr1"
+    private fun constructTileRsrcUrl(basePath: String?, tilePathStr: String): String {
+      var tileRsrcUrl = tilePathStr
+      if (!isUrl(tileRsrcUrl)) {
+        if (tileRsrcUrl.startsWith('/')) {
+          tileRsrcUrl = "file://$tileRsrcUrl"
         } else {
           if (basePath == null) {
-            throw SolrException(SolrException.ErrorCode.BAD_REQUEST, "can't resolve $tilePathField=$tilePathStr1")
+            throw SolrException(SolrException.ErrorCode.BAD_REQUEST, "can't resolve $tileMapResourcePathField=$tileRsrcUrl")
           }
-          tilePathStr1 = basePath + tilePathStr1
+          tileRsrcUrl = basePath + tileRsrcUrl
         }
       }
       // append '/' and 'tilemapresource.xml' if doesn't already end with ".xml"
-      if (tilePathStr1.endsWith(".xml") == false) {
-        if (!tilePathStr1.endsWith('/')) {
-          tilePathStr1 += '/'
+      if (tileRsrcUrl.endsWith(".xml") == false) {
+        if (!tileRsrcUrl.endsWith('/')) {
+          tileRsrcUrl += '/'
         }
-        tilePathStr1 += "/tilemapresource.xml"
+        tileRsrcUrl += "/tilemapresource.xml"
       }
-      return tilePathStr1
+      return tileRsrcUrl
     }
 
-    private fun enrichDocFromTileMap(solrDoc: SolrInputDocument, tilePathUrl: String) {
-      val xmlTileMap = xmlDocBuilder.parse(tilePathUrl).documentElement
+    private fun enrichDocFromTileMap(solrDoc: SolrInputDocument, tileRsrcUrl: String) {
+      val xmlTileMap = xmlDocBuilder.parse(tileRsrcUrl).documentElement
       checkEquals("TileMap", xmlTileMap.nodeName, "Not a <TileMap>")
 
       // TODO map from XML to Solr fields:
@@ -139,7 +142,8 @@ class SpatialMetadataURPFactory : UpdateRequestProcessorFactory() {
 
       // TileFormat
       val xmlTileFormat = xmlTileMap.getElementByName("TileFormat")
-      solrDoc.addField(tileFormatExtensionField, xmlTileFormat.getAttribute("extension"))
+      val tileFormatExtension = xmlTileFormat.getAttribute("extension")
+      solrDoc.addField(tileFormatExtensionField, tileFormatExtension)
 
       // TileSets for 'z' levels
       val xmlTileSets = xmlTileMap.getElementByName("TileSets")
@@ -157,8 +161,26 @@ class SpatialMetadataURPFactory : UpdateRequestProcessorFactory() {
       // check zList are contiguous (no missing)
       check(zList.size == zList.last() - zList.first() + 1, {"Missing TileSets? $zList"})
       solrDoc.addField(zoomLevelsField, zList)
+
+      // add Z/X/Y image paths by crawling file system
+      val zxyPaths = crawlZXYPaths(tileRsrcUrl, tileFormatExtension)
+      check(!zxyPaths.isEmpty(), {"Found no images files."})
+      solrDoc.addField(imageZXYPathsField, zxyPaths)
     }
 
+    private fun crawlZXYPaths(tileRsrcUrl: String, tileFormatExtension: String?): List<String> {
+      check(tileRsrcUrl.startsWith("file:/"), {"Only file paths are supported at this time. Got: $tileRsrcUrl"})
+      val pathStr = URLDecoder.decode(tileRsrcUrl.substring("file:".length), "UTF8") // remove % encoding
+      val parentPath = Paths.get(pathStr).parent
+      // rexexp encloses the "Z/X/Y" portion of the overall path
+      val regexp = Regex(".*/(\\d+/\\d+/\\d+)\\.$tileFormatExtension")
+      return Files.walk(parentPath, 3).use {
+        it.map { it -> regexp.matchEntire(it.toString())}
+                .filter { it != null }
+                .map { it!!.groupValues[1] }
+                .collect(Collectors.toList<String>())
+      }
+    }
 
   } // URP
 

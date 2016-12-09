@@ -35,10 +35,10 @@ class SpatialMetadataURPFactoryTest : SolrTestCaseJ4() {
   @Test
   fun test() {
     assertU(add(doc("id", "1",
-            "tileMapResourcePath", javaClass.getResource("test-tilemapresource.xml").toString() )))
+            "tileMapResourcePath", javaClass.getResource("/small-warped/tilemapresource.xml").toString() )))
     assertU(commit())
 
-    assertJQ(req("q", "id:1", "fl", "*"), 0.0,
+    assertJQ(req("q", "id:1", "fl", "*", "fq", "imageZXYPaths:17/74172/80502"), 0.0,
             "/response/docs/[0]/id=='1'",
             "/response/docs/[0]/bbox=='ENVELOPE (23.720941, 23.724727, 37.976615, 37.973773)'",
             "/response/docs/[0]/point=='POINT (23.722834 37.975194)'",

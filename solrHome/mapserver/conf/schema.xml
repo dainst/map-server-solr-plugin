@@ -21,6 +21,7 @@
 
   <field name="zoomLevels"  type="int"    indexed="true" docValues="true" stored="true" multiValued="true" />
 
+  <field name="imageZXYPaths"  type="string" indexed="true" docValues="false" stored="false" multiValued="true" />
 
   <!-- field types: -->
 
