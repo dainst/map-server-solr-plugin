@@ -16,14 +16,19 @@
 
 package io.github.codarchlab.mapserversolrplugin
 
+import org.apache.http.HttpHost
+import org.apache.http.HttpRequest
+import org.apache.http.client.methods.CloseableHttpResponse
+import org.apache.http.impl.client.CloseableHttpClient
+import org.apache.http.params.HttpParams
+import org.apache.http.protocol.HttpContext
 import org.apache.solr.client.solrj.SolrClient
+import org.apache.solr.client.solrj.impl.HttpClientUtil
 import org.apache.solr.client.solrj.impl.HttpSolrClient
+import org.apache.solr.client.solrj.response.QueryResponse
 import org.apache.solr.common.params.ModifiableSolrParams
 import java.awt.AlphaComposite
-import java.awt.color.ColorSpace
-import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
-import java.awt.image.ColorConvertOp
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 import java.nio.file.Path
@@ -46,7 +51,10 @@ import kotlin.reflect.KProperty
  * An example request looks like: /tile/Z/Y/X.png?q=keyword&etc.
  */
 class TmsSolrServlet : HttpServlet() {
-
+  companion object {
+    val servletReqRspThreadLocal = ThreadLocal<Pair<HttpServletRequest,HttpServletResponse>>()
+  }
+  
   // Kotlin delegated property to ServletConfig init parameters
   val servletConfigDelegate = object : ReadOnlyProperty<Any,String> {
     override fun getValue(thisRef: Any, property: KProperty<*>): String {
@@ -62,6 +70,7 @@ class TmsSolrServlet : HttpServlet() {
   val tileMapResourcePathField: String by servletConfigDelegate
   val imageZXYPathsField: String by servletConfigDelegate
 
+  lateinit var httpClient: CloseableHttpClient
   lateinit var solrClient: SolrClient
 
   val TILE_WIDTH_HEIGHT = 256
@@ -70,11 +79,52 @@ class TmsSolrServlet : HttpServlet() {
   override fun init() {
     super.init()
     val solrBaseUrl = getInitParameter("solrBaseUrl") ?: "http://localhost:8983/solr"
-    solrClient = HttpSolrClient.Builder(solrBaseUrl).build()
+    httpClient = CacheHeaderAwareHttpClient(HttpClientUtil.createClient(ModifiableSolrParams()))
+    solrClient = HttpSolrClient.Builder(solrBaseUrl).withHttpClient(httpClient).build()
+  }
+
+  // Used for control-flow to abort through SolrJ when we have a 304 response
+  class ResponseIsFinishedException : RuntimeException()
+
+  @Suppress("OverridingDeprecatedMember")
+  class CacheHeaderAwareHttpClient(val delegateHttpClient: CloseableHttpClient) : CloseableHttpClient() {
+    override fun getParams(): HttpParams = delegateHttpClient.params
+
+    override fun getConnectionManager() = delegateHttpClient.connectionManager
+
+    override fun close() = delegateHttpClient.close()
+
+    override fun doExecute(target: HttpHost, hcReq: HttpRequest, context: HttpContext?): CloseableHttpResponse {
+      val (servletReq, servletRsp) = servletReqRspThreadLocal.get()
+
+      // pass through request cache headers
+      for (headerName in listOf("If-None-Match")) {
+        servletReq.getHeader(headerName)?.let { headerValue ->
+          hcReq.setHeader(headerName, headerValue)
+        }
+      }
+
+      val hcResult = delegateHttpClient.execute(target, hcReq, context)
+
+      // pass through response cache headers
+      for (headerName in listOf("ETag", "Cache-Control")) {
+        hcResult.getFirstHeader(headerName)?.let {
+          servletRsp.setHeader(it.name, it.value)
+        }
+      }
+
+      if (hcResult.statusLine.statusCode == 304) {
+        servletRsp.status = 304
+        throw ResponseIsFinishedException()
+      }
+
+      return hcResult
+    }
   }
 
   override fun destroy() {
     solrClient.close()
+    httpClient.close()
   }
 
   override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
@@ -101,8 +151,15 @@ class TmsSolrServlet : HttpServlet() {
     val zxy = "$z/$x/$y"
     solrParams.add("fq", "{!field f=$imageZXYPathsField cache=false}$zxy")
 
-    //TODO pass-through HTTP caching headers;
-    val solrResp = solrClient.query(solrCollection, solrParams)
+    val solrResp: QueryResponse
+    servletReqRspThreadLocal.set(Pair(req, resp))
+    try {
+      solrResp = solrClient.query(solrCollection, solrParams)
+    } catch (e: ResponseIsFinishedException) { // we throw this for cached responses
+      return
+    } finally {
+      servletReqRspThreadLocal.set(null)
+    }
 
     val basePath = Paths.get(defaultBasePath)
     val tilePaths = solrResp.results.map { doc ->
