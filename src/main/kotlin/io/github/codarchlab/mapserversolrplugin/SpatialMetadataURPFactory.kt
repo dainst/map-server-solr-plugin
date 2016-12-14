@@ -65,10 +65,8 @@ class SpatialMetadataURPFactory : UpdateRequestProcessorFactory() {
   inner class SpatialMetadataURP(params: SolrParams, next: UpdateRequestProcessor?) : UpdateRequestProcessor(next) {
 
     val baseUrlPath = (params.get("basePath") ?: defaultBasePath)?.let {
-      if (!it.endsWith('/')) {
-        throw SolrException(SolrException.ErrorCode.BAD_REQUEST, "basePath '$it' should end in /")
-      }
-      if (isUrl(it)) it else Paths.get(it).toUri().toURL().toString()
+      val url = if (isUrl(it)) it else Paths.get(it).toUri().toURL().toString()
+      if (url.endsWith('/')) url else "$url/"
     } //?: throw SolrException(SolrException.ErrorCode.BAD_REQUEST, "basePath must be specified")
 
     override fun processAdd(cmd: AddUpdateCommand) {
