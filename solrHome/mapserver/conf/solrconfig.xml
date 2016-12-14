@@ -56,16 +56,15 @@
 
   <!-- request handlers -->
 
-  <requestHandler name="/update" class="solr.UpdateRequestHandler">
-    <lst name="defaults">
-      <str name="update.chain">customChain</str>
-    </lst>
-  </requestHandler>
+  <!--<requestHandler name="/update" class="solr.UpdateRequestHandler">-->
+    <!--<lst name="defaults">-->
+      <!--<str name="update.chain">customChain</str>-->
+    <!--</lst>-->
+  <!--</requestHandler>-->
 
-  <updateRequestProcessorChain name="customChain">
+  <updateRequestProcessorChain name="customChain" default="true">
     <processor class="io.github.codarchlab.mapserversolrplugin.SpatialMetadataURPFactory">
-      <str name="defaultBasePath">${tms_defaultBasePath:data/}</str>
-      <str name="tilePathField">tileMapResourcePath</str>
+      <str name="defaultBasePath">${tms.defaultBasePath:data/}</str>
       <str name="tileMapResourcePathField">tileMapResourcePath</str>
       <str name="bboxField">bbox</str>
       <str name="pointField">point</str>

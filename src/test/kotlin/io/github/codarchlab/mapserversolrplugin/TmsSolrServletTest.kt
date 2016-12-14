@@ -56,7 +56,7 @@ class TmsSolrServletTest() {
     fun beforeTests() {
       // referenced by solrconfig:
       val tmsBasePath = "src/test/resources/" // for the images
-      System.setProperty("tms_defaultBasePath", tmsBasePath)
+      System.setProperty("tms.defaultBasePath", tmsBasePath)
       System.setProperty("solr.data.dir", tmpDir.newFolder("solr_data_dir").absolutePath)
       System.setProperty("java.awt.headless", "true")
 
@@ -64,7 +64,7 @@ class TmsSolrServletTest() {
       tmsServletHolder.initParameters = mapOf(
               "solrCollection" to COLL,
               "solrRequestHandler" to "/tms",
-              "defaultBasePath" to tmsBasePath,
+              //"defaultBasePath" to tmsBasePath,
               "imageZXYPathsField" to "imageZXYPaths",
               "tileMapResourcePathField" to "tileMapResourcePath")
       val jettyConfig = JettyConfig.Builder().withServlet(tmsServletHolder, "/tms/*").setPort(8983).build()

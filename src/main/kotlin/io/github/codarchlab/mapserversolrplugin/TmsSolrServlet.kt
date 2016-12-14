@@ -59,7 +59,8 @@ class TmsSolrServlet : HttpServlet() {
   val servletConfigDelegate = object : ReadOnlyProperty<Any,String> {
     override fun getValue(thisRef: Any, property: KProperty<*>): String {
       val name = property.name
-      return servletConfig.getInitParameter(name) ?: throw RuntimeException("Expected servlet init param '$name'")
+      return servletConfig.getInitParameter(name) ?:
+        System.getProperty("tms.$name") ?: throw RuntimeException("Expected servlet init param '$name'")
     }
   }
 
