@@ -30,7 +30,7 @@
 
   <properties>
     <kotlin.version>1.0.5</kotlin.version>
-    <solr.version>6.1.0</solr.version>
+    <solr.version>8.2.0</solr.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
